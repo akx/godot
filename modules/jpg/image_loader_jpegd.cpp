@@ -143,11 +143,21 @@ public:
 class ImageLoaderJPGOSBuffer : public jpge::output_stream {
 public:
 	Vector<uint8_t> *buffer = nullptr;
+	int written = 0;
 	virtual bool put_buf(const void *Pbuf, int len) {
-		uint32_t base = buffer->size();
-		buffer->resize(base + len);
-		memcpy(buffer->ptrw() + base, Pbuf, len);
+		if (written + len > buffer->size()) {
+			// jpge does writes in JPGE_OUT_BUF_SIZE (2048)
+			// byte chunks, so better prepare a bit more in advance.
+			// the underlying CowData will allocate even more in any
+			// case.
+			buffer->resize(buffer->size() + 32768);
+		}
+		memcpy(buffer->ptrw() + written, Pbuf, len);
+		written += len;
 		return true;
+	}
+	void finalize() {
+		buffer->resize(written);
 	}
 };
 
@@ -185,11 +195,16 @@ static Error _jpgd_save_to_output_stream(jpge::output_stream *p_output_stream, c
 
 static Vector<uint8_t> _jpgd_buffer_save_func(const Ref<Image> &p_img, float p_quality) {
 	Vector<uint8_t> output;
+	// "JPEG typically achieves 10:1 compression with little perceptible loss in image quality."
+	// So we should prepare for that by allocating about w * h * 3 (channels) / 10 bytes.
+	int initial_size = p_img->get_width() * p_img->get_height() * 3 / 10;
+	output.resize(initial_size);
 	ImageLoaderJPGOSBuffer ob;
 	ob.buffer = &output;
 	if (_jpgd_save_to_output_stream(&ob, p_img, p_quality) != OK) {
 		return Vector<uint8_t>();
 	}
+	ob.finalize();  // crop the output buffer to the actual size
 	return output;
 }
 
