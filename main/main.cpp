@@ -197,10 +197,8 @@ static uint32_t window_flags = 0;
 static Size2i window_size = Size2i(1152, 648);
 
 static int init_screen = DisplayServer::SCREEN_PRIMARY;
-static bool init_fullscreen = false;
-static bool init_maximized = false;
-static bool init_windowed = false;
 static bool init_always_on_top = false;
+static bool init_use_custom_window_mode = false;
 static bool init_use_custom_pos = false;
 static bool init_use_custom_screen = false;
 static Vector2 init_custom_pos;
@@ -460,6 +458,7 @@ void Main::print_help(const char *p_binary) {
 	OS::get_singleton()->print("Display options:\n");
 	OS::get_singleton()->print("  -f, --fullscreen                  Request fullscreen mode.\n");
 	OS::get_singleton()->print("  -m, --maximized                   Request a maximized window.\n");
+	OS::get_singleton()->print("  -M, --minimized                   Request a minimized window.\n");
 	OS::get_singleton()->print("  -w, --windowed                    Request windowed mode.\n");
 	OS::get_singleton()->print("  -t, --always-on-top               Request an always-on-top window.\n");
 	OS::get_singleton()->print("  --resolution <W>x<H>              Request window resolution.\n");
@@ -1032,14 +1031,17 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				goto error;
 			}
 		} else if (I->get() == "-f" || I->get() == "--fullscreen") { // force fullscreen
-			init_fullscreen = true;
 			window_mode = DisplayServer::WINDOW_MODE_FULLSCREEN;
+			init_use_custom_window_mode = true;
 		} else if (I->get() == "-m" || I->get() == "--maximized") { // force maximized window
-			init_maximized = true;
 			window_mode = DisplayServer::WINDOW_MODE_MAXIMIZED;
+			init_use_custom_window_mode = true;
+		} else if (I->get() == "-M" || I->get() == "--minimized") { // force minimized window
+			window_mode = DisplayServer::WINDOW_MODE_MINIMIZED;
+			init_use_custom_window_mode = true;
 		} else if (I->get() == "-w" || I->get() == "--windowed") { // force windowed window
-
-			init_windowed = true;
+			window_mode = DisplayServer::WINDOW_MODE_WINDOWED;
+			init_use_custom_window_mode = true;
 		} else if (I->get() == "--gpu-index") {
 			if (I->next()) {
 				Engine::singleton->gpu_idx = I->next()->get().to_int();
@@ -1658,8 +1660,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	if (editor) {
 		packed_data->set_disabled(true);
 		main_args.push_back("--editor");
-		if (!init_windowed && !init_fullscreen) {
-			init_maximized = true;
+		if (!init_use_custom_window_mode) {
 			window_mode = DisplayServer::WINDOW_MODE_MAXIMIZED;
 		}
 	}
@@ -2024,7 +2025,9 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 		if (bool(GLOBAL_GET("display/window/size/no_focus"))) {
 			window_flags |= DisplayServer::WINDOW_FLAG_NO_FOCUS_BIT;
 		}
-		window_mode = (DisplayServer::WindowMode)(GLOBAL_GET("display/window/size/mode").operator int());
+		if (!init_use_custom_window_mode) {
+			window_mode = (DisplayServer::WindowMode)(GLOBAL_GET("display/window/size/mode").operator int());
+		}
 		int initial_position_type = GLOBAL_GET("display/window/size/initial_position_type").operator int();
 		if (initial_position_type == 0) { // Absolute.
 			if (!init_use_custom_pos) {
@@ -2599,13 +2602,7 @@ Error Main::setup2() {
 		bool show_logo = true;
 #endif
 
-		if (init_windowed) {
-			//do none..
-		} else if (init_maximized) {
-			DisplayServer::get_singleton()->window_set_mode(DisplayServer::WINDOW_MODE_MAXIMIZED);
-		} else if (init_fullscreen) {
-			DisplayServer::get_singleton()->window_set_mode(DisplayServer::WINDOW_MODE_FULLSCREEN);
-		}
+		DisplayServer::get_singleton()->window_set_mode(window_mode);
 		if (init_always_on_top) {
 			DisplayServer::get_singleton()->window_set_flag(DisplayServer::WINDOW_FLAG_ALWAYS_ON_TOP, true);
 		}
