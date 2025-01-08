@@ -124,6 +124,51 @@ Error png_to_image(const uint8_t *p_source, size_t p_size, bool p_force_linear, 
 	return OK;
 }
 
+#ifdef FPNG_ENABLED
+#include <fpng.h>
+
+Error image_to_png(const Ref<Image> &p_image, Vector<uint8_t> &p_buffer) {
+	static bool fpng_init_called = false;
+	Ref<Image> source_image = p_image->duplicate();
+
+	if (source_image->is_compressed()) {
+		source_image->decompress();
+	}
+
+	ERR_FAIL_COND_V(source_image->is_compressed(), FAILED);
+
+	// Convert to a supported format if need be
+	if (!(source_image->get_format() == Image::FORMAT_RGB8 || source_image->get_format() == Image::FORMAT_RGBA8)) {
+		if (source_image->detect_alpha()) {
+			source_image->convert(Image::FORMAT_RGBA8);
+		} else {
+			source_image->convert(Image::FORMAT_RGB8);
+		}
+	}
+	const Vector<uint8_t> image_data = source_image->get_data();
+	std::vector<uint8_t> out_buf;
+	if (!fpng_init_called) {
+		fpng::fpng_init();
+		fpng_init_called = true;
+	}
+	int success = fpng::fpng_encode_image_to_memory(
+			image_data.ptr(),
+			source_image->get_width(),
+			source_image->get_height(),
+			source_image->get_format() == Image::FORMAT_RGB8 ? 3 : 4,
+			out_buf,
+			0 // flags
+	);
+	if (!success) {
+		ERR_FAIL_V_MSG(FAILED, "Failed to encode image to PNG.");
+	}
+	auto bs = p_buffer.size();
+	Error err = p_buffer.resize(bs + out_buf.size());
+	ERR_FAIL_COND_V(err, err);
+	memcpy(p_buffer.ptrw() + bs, out_buf.data(), out_buf.size());
+	return OK;
+}
+#else
 Error image_to_png(const Ref<Image> &p_image, Vector<uint8_t> &p_buffer) {
 	Ref<Image> source_image = p_image->duplicate();
 
@@ -203,4 +248,5 @@ Error image_to_png(const Ref<Image> &p_image, Vector<uint8_t> &p_buffer) {
 
 	return OK;
 }
+#endif
 } // namespace PNGDriverCommon
